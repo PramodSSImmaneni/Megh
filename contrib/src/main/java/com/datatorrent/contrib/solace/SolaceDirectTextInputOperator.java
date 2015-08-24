@@ -6,17 +6,15 @@ import com.solacesystems.jcsmp.TextMessage;
 import com.datatorrent.api.DefaultOutputPort;
 
 /**
- * Created by pramod on 8/21/15.
+ * Created by pramod on 8/24/15.
  */
-public class SolaceTextInputOperator extends AbstractSolaceInputOperator
+public class SolaceDirectTextInputOperator extends AbstractSolaceDirectInputOperator
 {
   public transient final DefaultOutputPort<String> output = new DefaultOutputPort<String>();
 
   @Override
-  protected void processMessage(BytesXMLMessage message)
+  protected void processDirectMessage(BytesXMLMessage message)
   {
-    if (message instanceof TextMessage) {
-      output.emit(((TextMessage) message).getText());
-    }
+    output.emit(((TextMessage) message).getText());
   }
 }

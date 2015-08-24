@@ -8,12 +8,13 @@ import org.junit.Test;
 import com.datatorrent.lib.helper.OperatorContextTestHelper;
 import com.datatorrent.lib.testbench.CollectorTestSink;
 
+import com.datatorrent.api.Attribute;
 import com.datatorrent.api.Context;
 
 /**
  * Created by pramod on 8/20/15.
  */
-public class AbstractSolaceInputOperatorTest
+public class AbstractSolaceGuaranteedInputOperatorTest
 {
   @Test
   public void testDirectSolace() {
@@ -165,28 +166,85 @@ public class AbstractSolaceInputOperatorTest
   }
 
   @Test
-  public void testOperator() {
+  public void testGuaranteedOperator() {
     JCSMPProperties properties = new JCSMPProperties();
-    properties.setProperty(JCSMPProperties.HOST, "192.168.128.131:55555");
+    //properties.setProperty(JCSMPProperties.HOST, "192.168.128.131:55555");
+    properties.setProperty(JCSMPProperties.HOST, "192.168.1.168:55555");
     properties.setProperty(JCSMPProperties.VPN_NAME, "default");
     properties.setProperty(JCSMPProperties.USERNAME, "pramod");
-    SolacePublisher publisher = new SolacePublisher(properties);
-    SolaceTextInputOperator inputOperator = new SolaceTextInputOperator();
+    properties.setProperty(JCSMPProperties.ACK_EVENT_MODE, JCSMPProperties.SUPPORTED_ACK_EVENT_MODE_WINDOWED);
+    SolacePublisher publisher = new SolacePublisher(properties, "MyQ", new EndpointProperties());
+    SolaceGuaranteedTextInputOperator inputOperator = new SolaceGuaranteedTextInputOperator();
     try {
       publisher.connect();
       publisher.publish();
 
       inputOperator.setProperties(properties);
-      inputOperator.setQueue("MyQ");
+      inputOperator.setEndpointName("MyQ");
 
       CollectorTestSink sink = new CollectorTestSink();
       inputOperator.output.setSink(sink);
 
-      Context.OperatorContext context = new OperatorContextTestHelper.TestIdOperatorContext(0);
+      Attribute.AttributeMap map = new Attribute.AttributeMap.DefaultAttributeMap();
+      map.put(Context.OperatorContext.SPIN_MILLIS, 10);
+      Context.OperatorContext context = new OperatorContextTestHelper.TestIdOperatorContext(0, map);
       inputOperator.setup(context);
       inputOperator.activate(context);
 
       inputOperator.beginWindow(0);
+      while (!publisher.published) {
+        inputOperator.emitTuples();
+      }
+      inputOperator.endWindow();
+
+      inputOperator.deactivate();
+      inputOperator.teardown();
+
+      System.out.println("TOTAL TUPLES " + sink.collectedTuples.size());
+      /*
+      for (String s : ((CollectorTestSink<String>)sink).collectedTuples) {
+        System.out.println("Received " + s);
+      }
+      */
+      Assert.assertEquals("Received tupes", publisher.publishCount, sink.collectedTuples.size());
+    } catch (JCSMPException e) {
+      Assert.fail(e.getMessage());
+    } finally {
+      publisher.disconnect();
+    }
+  }
+
+  @Test
+  public void testDirectOperator() {
+    JCSMPProperties properties = new JCSMPProperties();
+    //properties.setProperty(JCSMPProperties.HOST, "192.168.128.131:55555");
+    properties.setProperty(JCSMPProperties.HOST, "192.168.1.168:55555");
+    properties.setProperty(JCSMPProperties.VPN_NAME, "default");
+    properties.setProperty(JCSMPProperties.USERNAME, "pramod");
+    properties.setProperty(JCSMPProperties.ACK_EVENT_MODE, JCSMPProperties.SUPPORTED_ACK_EVENT_MODE_WINDOWED);
+    SolacePublisher publisher = new SolacePublisher(properties, "mytopic", null);
+    publisher.publishCount = 100;
+    SolaceDirectTextInputOperator inputOperator = new SolaceDirectTextInputOperator();
+    try {
+      publisher.connect();
+      publisher.publish();
+
+      inputOperator.setProperties(properties);
+      inputOperator.setTopicName("mytopic");
+
+      CollectorTestSink sink = new CollectorTestSink();
+      inputOperator.output.setSink(sink);
+
+      Attribute.AttributeMap map = new Attribute.AttributeMap.DefaultAttributeMap();
+      map.put(Context.OperatorContext.SPIN_MILLIS, 10);
+      Context.OperatorContext context = new OperatorContextTestHelper.TestIdOperatorContext(0, map);
+      inputOperator.setup(context);
+      inputOperator.activate(context);
+
+      inputOperator.beginWindow(0);
+      while (!publisher.published) {
+        inputOperator.emitTuples();
+      }
       for (int i = 0; i < 1000; ++i) {
         inputOperator.emitTuples();
       }
@@ -196,14 +254,18 @@ public class AbstractSolaceInputOperatorTest
       inputOperator.teardown();
 
       System.out.println("TOTAL TUPLES " + sink.collectedTuples.size());
+      /*
       for (String s : ((CollectorTestSink<String>)sink).collectedTuples) {
         System.out.println("Received " + s);
       }
+      */
+      Assert.assertEquals("Received tupes", publisher.publishCount, sink.collectedTuples.size());
     } catch (JCSMPException e) {
       Assert.fail(e.getMessage());
     } finally {
       publisher.disconnect();
     }
   }
+
 
 }

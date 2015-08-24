@@ -16,15 +16,22 @@ public class SolacePublisher implements Runnable
 {
   final JCSMPFactory factory = JCSMPFactory.onlyInstance();
   JCSMPSession session = null;
-  Queue queue;
+  Destination destination;
   XMLMessageProducer messageProducer;
   ExecutorService executor;
   Random random = new Random();
+  boolean published;
+  int publishCount = 1000;
+  int recvCount;
 
   JCSMPProperties properties;
+  String destinationName;
+  EndpointProperties endpointProperties;
 
-  public SolacePublisher(JCSMPProperties properties) {
+  public SolacePublisher(JCSMPProperties properties, String destinationName, EndpointProperties endpointProperties) {
     this.properties = properties;
+    this.destinationName = destinationName;
+    this.endpointProperties = endpointProperties;
     executor = Executors.newSingleThreadExecutor();
   }
 
@@ -33,23 +40,27 @@ public class SolacePublisher implements Runnable
     try {
       session = factory.createSession(properties);
       session.connect();
-      EndpointProperties endpointProperties = new EndpointProperties();
-      //endpointProperties.setPermission(EndpointProperties.PERMISSION_CONSUME);
-      //endpointProperties.setAccessType(EndpointProperties.ACCESSTYPE_EXCLUSIVE);
-      queue = factory.createQueue("MyQ");
-      session.provision(queue, endpointProperties, JCSMPSession.FLAG_IGNORE_ALREADY_EXISTS);
+      if (endpointProperties == null) {
+        destination = factory.createTopic(destinationName);
+      } else {
+        destination = factory.createQueue(destinationName);
+        session.provision((Endpoint) destination, endpointProperties, JCSMPSession.FLAG_IGNORE_ALREADY_EXISTS);
+      }
       messageProducer = session.getMessageProducer(new JCSMPStreamingPublishEventHandler()
       {
         @Override
         public void handleError(String s, JCSMPException e, long l)
         {
-          System.out.println("Exception " + e);
+          DTThrowable.rethrow(e);
         }
 
         @Override
         public void responseReceived(String s)
         {
           //System.out.println("Response recieved " + s);
+          if (++recvCount == publishCount) {
+            published = true;
+          }
         }
       });
     } catch (JCSMPException e) {
@@ -72,16 +83,18 @@ public class SolacePublisher implements Runnable
   }
 
   public void publish() {
+    recvCount = 0;
+    published = false;
     executor.submit(this);
   }
 
   public void run() {
-    for (int i = 1000; i-- > 0;) {
+    for (int i = publishCount; i-- > 0;) {
       TextMessage message = factory.createMessage(TextMessage.class);
       message.setText("Hello World " + random.nextInt(1000));
       message.setDeliveryMode(DeliveryMode.PERSISTENT);
       try {
-        messageProducer.send(message, queue);
+        messageProducer.send(message, destination);
       } catch (JCSMPException e) {
         DTThrowable.rethrow(e);
       }
