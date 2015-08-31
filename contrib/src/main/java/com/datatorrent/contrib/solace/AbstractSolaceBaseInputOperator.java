@@ -4,8 +4,9 @@ import javax.validation.constraints.NotNull;
 
 import com.solacesystems.jcsmp.*;
 
-import com.datatorrent.api.*;
 import com.datatorrent.api.Context;
+import com.datatorrent.api.InputOperator;
+import com.datatorrent.api.Operator;
 
 import com.datatorrent.common.util.BaseOperator;
 import com.datatorrent.netlet.util.DTThrowable;
@@ -27,7 +28,7 @@ public abstract class AbstractSolaceBaseInputOperator extends BaseOperator imple
   int spinMillis;
 
   @Override
-  public void setup(com.datatorrent.api.Context.OperatorContext context)
+  public void setup(Context.OperatorContext context)
   {
     spinMillis = context.getValue(com.datatorrent.api.Context.OperatorContext.SPIN_MILLIS);
     factory = JCSMPFactory.onlyInstance();
@@ -53,8 +54,13 @@ public abstract class AbstractSolaceBaseInputOperator extends BaseOperator imple
   @Override
   public void deactivate()
   {
-    consumer.stop();
-    consumer.close();
+    try {
+      consumer.stop();
+      clearConsumer();
+      consumer.close();
+    } catch (JCSMPException e) {
+      DTThrowable.rethrow(e);
+    }
   }
 
   @Override
@@ -70,7 +76,6 @@ public abstract class AbstractSolaceBaseInputOperator extends BaseOperator imple
       BytesXMLMessage message = consumer.receive(spinMillis);
       if (message != null) {
         processMessage(message);
-        message.ackMessage();
       }
     } catch (JCSMPException e) {
       DTThrowable.rethrow(e);
@@ -78,6 +83,8 @@ public abstract class AbstractSolaceBaseInputOperator extends BaseOperator imple
   }
 
   protected abstract Consumer getConsumer() throws JCSMPException;
+
+  protected abstract void clearConsumer() throws JCSMPException;
 
   protected abstract void processMessage(BytesXMLMessage message);
 

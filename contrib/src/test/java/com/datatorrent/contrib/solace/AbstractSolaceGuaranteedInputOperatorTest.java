@@ -4,6 +4,8 @@ import com.solacesystems.jcsmp.*;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.datatorrent.lib.helper.OperatorContextTestHelper;
 import com.datatorrent.lib.testbench.CollectorTestSink;
@@ -16,6 +18,8 @@ import com.datatorrent.api.Context;
  */
 public class AbstractSolaceGuaranteedInputOperatorTest
 {
+  private static final Logger logger = LoggerFactory.getLogger(AbstractSolaceGuaranteedInputOperatorTest.class);
+
   @Test
   public void testDirectSolace() {
     JCSMPProperties properties = new JCSMPProperties();
@@ -28,7 +32,7 @@ public class AbstractSolaceGuaranteedInputOperatorTest
     try {
       session = factory.createSession(properties);
       session.connect();
-      System.out.println("Compression capable " + session.getCapability(CapabilityType.COMPRESSION));
+      logger.info("Compression capable {}", session.getCapability(CapabilityType.COMPRESSION));
       Topic topic = factory.createTopic("topic1");
       TextMessage message = factory.createMessage(TextMessage.class);
       message.setText("Hello World");
@@ -38,13 +42,17 @@ public class AbstractSolaceGuaranteedInputOperatorTest
         @Override
         public void onReceive(BytesXMLMessage bytesXMLMessage)
         {
-          System.out.println("Recieved message " + ((TextMessage)bytesXMLMessage).getText());
+          //logger.debug("Recieved message {}", ((TextMessage)bytesXMLMessage).getText());
+          logger.debug("Length {}", bytesXMLMessage.getBytes().length);
+          byte[] bytes = new byte[bytesXMLMessage.getAttachmentContentLength()];
+          bytesXMLMessage.readAttachmentBytes(bytes);
+          logger.debug("Text {}", new String(bytes));
         }
 
         @Override
         public void onException(JCSMPException e)
         {
-          System.out.println("Recieve exception " + e);
+          logger.error("Recieve exception ", e);
         }
       });
       XMLMessageProducer messageProducer = session.getMessageProducer(new JCSMPStreamingPublishEventHandler()
@@ -52,13 +60,13 @@ public class AbstractSolaceGuaranteedInputOperatorTest
         @Override
         public void handleError(String s, JCSMPException e, long l)
         {
-          System.out.println("Exception " + e);
+          logger.error("Exception ", e);
         }
 
         @Override
         public void responseReceived(String s)
         {
-          System.out.println("Response recieved " + s);
+          logger.debug("Response recieved {}", s);
         }
       });
       messageConsumer.start();
@@ -91,7 +99,7 @@ public class AbstractSolaceGuaranteedInputOperatorTest
     try {
       session = factory.createSession(properties);
       session.connect();
-      System.out.println("Compression capable " + session.getCapability(CapabilityType.COMPRESSION));
+      logger.info("Compression capable {}", session.getCapability(CapabilityType.COMPRESSION));
       EndpointProperties endpointProperties = new EndpointProperties();
       //endpointProperties.setPermission(EndpointProperties.PERMISSION_CONSUME);
       //endpointProperties.setAccessType(EndpointProperties.ACCESSTYPE_EXCLUSIVE);
@@ -108,13 +116,13 @@ public class AbstractSolaceGuaranteedInputOperatorTest
         @Override
         public void onReceive(BytesXMLMessage bytes XMLMessage)
         {
-          System.out.println("Recieved message " + ((TextMessage)bytesXMLMessage).getText());
+          logger.debug("Recieved message {}", ((TextMessage)bytesXMLMessage).getText());
         }
 
         @Override
         public void onException(JCSMPException e)
         {
-          System.out.println("Recieve exception " + e);
+          logger.error("Recieve exception ", e);
         }
       });
       */
@@ -123,13 +131,13 @@ public class AbstractSolaceGuaranteedInputOperatorTest
         @Override
         public void handleError(String s, JCSMPException e, long l)
         {
-          System.out.println("Exception " + e);
+          logger.error("Exception ", e);
         }
 
         @Override
         public void responseReceived(String s)
         {
-          System.out.println("Response recieved " + s);
+          logger.debug("Response recieved ", s);
         }
       });
       /*
@@ -147,7 +155,7 @@ public class AbstractSolaceGuaranteedInputOperatorTest
       receiver.start();
       BytesXMLMessage recvMessage = receiver.receive(30000);
       if (recvMessage != null) {
-        System.out.println("Received message :" + recvMessage.dump());
+        logger.info("Received message : {}", recvMessage.dump());
         recvMessage.ackMessage();
       }
       receiver.close();
@@ -200,10 +208,10 @@ public class AbstractSolaceGuaranteedInputOperatorTest
       inputOperator.deactivate();
       inputOperator.teardown();
 
-      System.out.println("TOTAL TUPLES " + sink.collectedTuples.size());
+      logger.info("TOTAL TUPLES {}", sink.collectedTuples.size());
       /*
       for (String s : ((CollectorTestSink<String>)sink).collectedTuples) {
-        System.out.println("Received " + s);
+        logger.debug("Received {}", s);
       }
       */
       Assert.assertEquals("Received tupes", publisher.publishCount, sink.collectedTuples.size());
@@ -222,21 +230,22 @@ public class AbstractSolaceGuaranteedInputOperatorTest
     properties.setProperty(JCSMPProperties.VPN_NAME, "default");
     properties.setProperty(JCSMPProperties.USERNAME, "pramod");
     properties.setProperty(JCSMPProperties.ACK_EVENT_MODE, JCSMPProperties.SUPPORTED_ACK_EVENT_MODE_WINDOWED);
-    SolacePublisher publisher = new SolacePublisher(properties, "mytopic", null);
-    publisher.publishCount = 100;
-    SolaceDirectTextInputOperator inputOperator = new SolaceDirectTextInputOperator();
+    SolacePublisher publisher = new SolacePublisher(properties, "topic1", null);
+    publisher.publishCount = 10000;
+    SolaceDirectTextStrInputOperator inputOperator = new SolaceDirectTextStrInputOperator();
     try {
       publisher.connect();
       publisher.publish();
 
       inputOperator.setProperties(properties);
-      inputOperator.setTopicName("mytopic");
+      inputOperator.setTopicName("topic1");
 
       CollectorTestSink sink = new CollectorTestSink();
       inputOperator.output.setSink(sink);
 
       Attribute.AttributeMap map = new Attribute.AttributeMap.DefaultAttributeMap();
       map.put(Context.OperatorContext.SPIN_MILLIS, 10);
+      map.put(Context.DAGContext.APPLICATION_PATH, "target/" + this.getClass().getName());
       Context.OperatorContext context = new OperatorContextTestHelper.TestIdOperatorContext(0, map);
       inputOperator.setup(context);
       inputOperator.activate(context);
@@ -253,10 +262,10 @@ public class AbstractSolaceGuaranteedInputOperatorTest
       inputOperator.deactivate();
       inputOperator.teardown();
 
-      System.out.println("TOTAL TUPLES " + sink.collectedTuples.size());
+      logger.info("TOTAL TUPLES {}", sink.collectedTuples.size());
       /*
       for (String s : ((CollectorTestSink<String>)sink).collectedTuples) {
-        System.out.println("Received " + s);
+        logger.debug("Received {}", s);
       }
       */
       Assert.assertEquals("Received tupes", publisher.publishCount, sink.collectedTuples.size());

@@ -4,6 +4,8 @@ import javax.validation.constraints.NotNull;
 
 import com.solacesystems.jcsmp.*;
 
+import com.datatorrent.lib.io.IdempotentStorageManager;
+
 import com.datatorrent.api.Context;
 import com.datatorrent.api.InputOperator;
 import com.datatorrent.api.Operator;
@@ -23,6 +25,8 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
   protected EndpointProperties endpointProperties = new EndpointProperties();
 
   protected long endpointProvisionFlags = JCSMPSession.FLAG_IGNORE_ALREADY_EXISTS;
+
+  private IdempotentStorageManager idempotentStorageManager = new IdempotentStorageManager.FSIdempotentStorageManager();
 
   private transient Endpoint endpoint;
 
@@ -45,6 +49,11 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
     consumerFlowProperties.setEndpoint(endpoint);
     consumerFlowProperties.setAckMode(JCSMPProperties.SUPPORTED_MESSAGE_ACK_CLIENT);
     return session.createFlow(null, consumerFlowProperties, endpointProperties);
+  }
+
+  @Override
+  protected void clearConsumer() throws JCSMPException
+  {
   }
 
   @Override
@@ -94,5 +103,15 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
   public void setEndpointProvisionFlags(long endpointProvisionFlags)
   {
     this.endpointProvisionFlags = endpointProvisionFlags;
+  }
+
+  public IdempotentStorageManager getIdempotentStorageManager()
+  {
+    return idempotentStorageManager;
+  }
+
+  public void setIdempotentStorageManager(IdempotentStorageManager idempotentStorageManager)
+  {
+    this.idempotentStorageManager = idempotentStorageManager;
   }
 }

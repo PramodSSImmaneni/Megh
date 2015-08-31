@@ -57,7 +57,7 @@ public class SolacePublisher implements Runnable
         @Override
         public void responseReceived(String s)
         {
-          //System.out.println("Response recieved " + s);
+          //logger.debug("Response recieved {}", s);
           if (++recvCount == publishCount) {
             published = true;
           }

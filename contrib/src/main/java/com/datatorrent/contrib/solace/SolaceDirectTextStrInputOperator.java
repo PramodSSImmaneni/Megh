@@ -8,13 +8,19 @@ import com.datatorrent.api.DefaultOutputPort;
 /**
  * Created by pramod on 8/24/15.
  */
-public class SolaceDirectTextInputOperator extends AbstractSolaceDirectInputOperator
+public class SolaceDirectTextStrInputOperator extends AbstractSolaceDirectInputOperator<String>
 {
   public transient final DefaultOutputPort<String> output = new DefaultOutputPort<String>();
 
   @Override
-  protected void processDirectMessage(BytesXMLMessage message)
+  protected String convert(BytesXMLMessage message)
   {
-    output.emit(((TextMessage) message).getText());
+    return ((TextMessage) message).getText();
+  }
+
+  @Override
+  protected void emitTuple(String tuple)
+  {
+    output.emit(tuple);
   }
 }
