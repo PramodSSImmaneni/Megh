@@ -29,6 +29,14 @@ public abstract class AbstractSolaceGuaranteedOutputOperator<T> extends Abstract
     return session.getMessageProducer(null);
   }
 
+  protected XMLMessage getMessage(T tuple) {
+    XMLMessage message = convert(tuple);
+    message.setDeliveryMode(DeliveryMode.PERSISTENT);
+    return message;
+  }
+
+  protected abstract XMLMessage convert(T tuple);
+
   public String getQueueName()
   {
     return queueName;

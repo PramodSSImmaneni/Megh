@@ -2,9 +2,7 @@ package com.datatorrent.contrib.solace;
 
 import javax.validation.constraints.NotNull;
 
-import com.solacesystems.jcsmp.Destination;
-import com.solacesystems.jcsmp.JCSMPException;
-import com.solacesystems.jcsmp.Producer;
+import com.solacesystems.jcsmp.*;
 
 /**
  * Created by pramod on 10/2/15.
@@ -25,6 +23,14 @@ public abstract class AbstractSolaceDirectOutputOperator<T> extends AbstractSola
   {
     return session.getMessageProducer(null);
   }
+
+  protected XMLMessage getMessage(T tuple) {
+    XMLMessage message = convert(tuple);
+    message.setDeliveryMode(DeliveryMode.DIRECT);
+    return message;
+  }
+
+  protected abstract XMLMessage convert(T tuple);
 
   public String getTopicName()
   {

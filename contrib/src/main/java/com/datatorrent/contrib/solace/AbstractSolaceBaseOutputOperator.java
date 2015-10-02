@@ -77,10 +77,10 @@ public abstract class AbstractSolaceBaseOutputOperator<T> extends BaseOperator i
 
   protected abstract Producer getProducer() throws JCSMPException;
 
-  protected abstract XMLMessage convert(T tuple);
+  protected abstract XMLMessage getMessage(T tuple);
 
   protected void sendMessage(T tuple) {
-    XMLMessage message = convert(tuple);
+    XMLMessage message = getMessage(tuple);
     try {
       if (xmlProducer != null) {
         xmlProducer.send(message, destination);
