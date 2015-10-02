@@ -180,8 +180,6 @@ public abstract class AbstractSolaceGuaranteedInputOperator<T> extends AbstractS
     long lastMesgId = -1;
   }
 
-  protected abstract void processGuaranteedMessage(BytesXMLMessage message);
-
   public String getEndpointName()
   {
     return endpointName;
