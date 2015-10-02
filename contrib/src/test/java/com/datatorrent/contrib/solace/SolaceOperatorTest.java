@@ -1,11 +1,11 @@
 package com.datatorrent.contrib.solace;
 
-import com.solacesystems.jcsmp.*;
-
 import org.junit.Assert;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.solacesystems.jcsmp.*;
 
 import com.datatorrent.lib.helper.OperatorContextTestHelper;
 import com.datatorrent.lib.testbench.CollectorTestSink;
@@ -16,9 +16,9 @@ import com.datatorrent.api.Context;
 /**
  * Created by pramod on 8/20/15.
  */
-public class AbstractSolaceGuaranteedInputOperatorTest
+public class SolaceOperatorTest
 {
-  private static final Logger logger = LoggerFactory.getLogger(AbstractSolaceGuaranteedInputOperatorTest.class);
+  private static final Logger logger = LoggerFactory.getLogger(SolaceOperatorTest.class);
 
   @Test
   public void testDirectSolace() {
@@ -182,7 +182,7 @@ public class AbstractSolaceGuaranteedInputOperatorTest
     properties.setProperty(JCSMPProperties.USERNAME, "pramod");
     properties.setProperty(JCSMPProperties.ACK_EVENT_MODE, JCSMPProperties.SUPPORTED_ACK_EVENT_MODE_WINDOWED);
     SolacePublisher publisher = new SolacePublisher(properties, "MyQ", new EndpointProperties());
-    SolaceGuaranteedTextInputOperator inputOperator = new SolaceGuaranteedTextInputOperator();
+    SolaceGuaranteedTextStrInputOperator inputOperator = new SolaceGuaranteedTextStrInputOperator();
     try {
       publisher.connect();
       publisher.publish();

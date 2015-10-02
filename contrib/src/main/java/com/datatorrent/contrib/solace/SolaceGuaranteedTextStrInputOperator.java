@@ -8,7 +8,7 @@ import com.datatorrent.api.DefaultOutputPort;
 /**
  * Created by pramod on 8/21/15.
  */
-public class SolaceGuaranteedTextInputOperator extends AbstractSolaceGuaranteedInputOperator<String>
+public class SolaceGuaranteedTextStrInputOperator extends AbstractSolaceGuaranteedInputOperator<String>
 {
   public transient final DefaultOutputPort<String> output = new DefaultOutputPort<String>();
 
