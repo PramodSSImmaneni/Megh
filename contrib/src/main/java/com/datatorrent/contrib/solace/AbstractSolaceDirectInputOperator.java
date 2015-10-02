@@ -8,8 +8,6 @@ import javax.validation.constraints.NotNull;
 
 import com.solacesystems.jcsmp.*;
 
-import com.datatorrent.lib.io.IdempotentStorageManager;
-
 import com.datatorrent.api.InputOperator;
 import com.datatorrent.api.Operator;
 
@@ -18,27 +16,19 @@ import com.datatorrent.netlet.util.DTThrowable;
 /**
  * Created by pramod on 8/24/15.
  */
-public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolaceBaseInputOperator implements InputOperator, Operator.ActivationListener<com.datatorrent.api.Context.OperatorContext>, Operator.CheckpointListener
+public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolaceBaseInputOperator<T> implements InputOperator, Operator.ActivationListener<com.datatorrent.api.Context.OperatorContext>
 {
   @NotNull
   protected String topicName;
 
   private transient Topic topic;
 
-  private IdempotentStorageManager idempotentStorageManager = new IdempotentStorageManager.FSIdempotentStorageManager();
-
-  private transient int operatorId;
-  private transient long windowId;
-  private transient long lastCompletedWId;
   private transient List<T> tuples = new ArrayList<T>();
 
   @Override
   public void setup(com.datatorrent.api.Context.OperatorContext context)
   {
     super.setup(context);
-    operatorId = context.getId();
-    idempotentStorageManager.setup(context);
-    lastCompletedWId = idempotentStorageManager.getLargestRecoveryWindow();
     // Create a handle to topic locally
     topic = factory.createTopic(topicName);
   }
@@ -46,10 +36,11 @@ public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolac
   @Override
   public void beginWindow(long windowId)
   {
-    this.windowId = windowId;
+    super.beginWindow(windowId);
     if (windowId <= lastCompletedWId) {
       try {
         tuples = (List<T>)idempotentStorageManager.load(operatorId, windowId);
+        handleRecovery();
       } catch (IOException e) {
         DTThrowable.rethrow(e);
       }
@@ -59,13 +50,12 @@ public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolac
   @Override
   public void endWindow()
   {
+    super.endWindow();
     try {
-      if (windowId <= lastCompletedWId) {
-        processRecoveredMessages();
-      } else {
+      if (windowId > lastCompletedWId) {
         idempotentStorageManager.save(tuples, operatorId, windowId);
-        tuples.clear();
       }
+      tuples.clear();
     } catch (IOException e) {
       DTThrowable.rethrow(e);
     }
@@ -74,9 +64,7 @@ public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolac
   @Override
   public void emitTuples()
   {
-    if (windowId <= lastCompletedWId) {
-      processRecoveredMessages();
-    } else {
+    if (windowId > lastCompletedWId) {
       super.emitTuples();
     }
   }
@@ -95,39 +83,20 @@ public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolac
   }
 
   @Override
-  protected void processMessage(BytesXMLMessage message)
+  protected T processMessage(BytesXMLMessage message)
   {
-    T tuple = convert(message);
+    T tuple = super.processMessage(message);
     tuples.add(tuple);
-    emitTuple(tuple);
+    return tuple;
   }
 
-  private void processRecoveredMessages() {
+  private void handleRecovery() {
     for (T tuple : tuples) {
       //processDirectMessage(message);
       emitTuple(tuple);
     }
     tuples.clear();
   }
-
-  @Override
-  public void checkpointed(long l)
-  {
-  }
-
-  @Override
-  public void committed(long window)
-  {
-    try {
-      idempotentStorageManager.deleteUpTo(operatorId, window);
-    } catch (IOException e) {
-      DTThrowable.rethrow(e);
-    }
-  }
-
-  protected abstract T convert(BytesXMLMessage message);
-
-  protected abstract void emitTuple(T tuple);
 
   public String getTopicName()
   {
@@ -138,5 +107,4 @@ public abstract class AbstractSolaceDirectInputOperator<T> extends AbstractSolac
   {
     this.topicName = topicName;
   }
-
 }

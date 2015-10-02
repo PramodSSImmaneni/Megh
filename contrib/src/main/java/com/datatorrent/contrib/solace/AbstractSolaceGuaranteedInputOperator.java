@@ -1,19 +1,26 @@
 package com.datatorrent.contrib.solace;
 
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.TreeMap;
+
 import javax.validation.constraints.NotNull;
 
 import com.solacesystems.jcsmp.*;
 
-import com.datatorrent.lib.io.IdempotentStorageManager;
-
 import com.datatorrent.api.Context;
+import com.datatorrent.api.Context.DAGContext;
+import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.InputOperator;
 import com.datatorrent.api.Operator;
+
+import com.datatorrent.netlet.util.DTThrowable;
 
 /**
  *
  */
-public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSolaceBaseInputOperator implements InputOperator, Operator.ActivationListener<Context.OperatorContext>
+public abstract class AbstractSolaceGuaranteedInputOperator<T> extends AbstractSolaceBaseInputOperator<T> implements InputOperator, Operator.ActivationListener<Context.OperatorContext>
 {
 
   @NotNull
@@ -26,14 +33,25 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
 
   protected long endpointProvisionFlags = JCSMPSession.FLAG_IGNORE_ALREADY_EXISTS;
 
-  private IdempotentStorageManager idempotentStorageManager = new IdempotentStorageManager.FSIdempotentStorageManager();
-
   private transient Endpoint endpoint;
+
+  private transient long windowTime;
+
+  private transient WindowMessageInfo mesgInfo = new WindowMessageInfo();
+  // BytesXmlMessage is not serializable so not persisting recent message
+  // If application window doesn't coincide with checkpoint window we wont have recent message and need a different way
+  // to get message id, hence persisting recent message id
+  private transient BytesXMLMessage recentMessage = null;
+  private long recentMesgId;
+  // Pending message from a previous window that was used determine the limit of message in a window during recovery
+  private transient BytesXMLMessage pendingMessage = null;
+  private transient TreeMap<Long, BytesXMLMessage> lastMessages = new TreeMap<Long, BytesXMLMessage>();
 
   @Override
   public void setup(Context.OperatorContext context)
   {
     super.setup(context);
+    windowTime = context.getValue(OperatorContext.APPLICATION_WINDOW_COUNT) * context.getValue(DAGContext.STREAMING_WINDOW_SIZE_MILLIS);
     // Create a handle to endpoint locally
     if (endpointType == EndpointType.QUEUE) {
       endpoint = factory.createQueue(this.endpointName);
@@ -57,10 +75,109 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
   }
 
   @Override
-  public void processMessage(BytesXMLMessage message)
+  public void beginWindow(long windowId)
   {
-    processGuaranteedMessage(message);
-    message.ackMessage();
+    super.beginWindow(windowId);
+    if (windowId > lastCompletedWId) {
+      mesgInfo.firstMesgId = -1;
+      mesgInfo.lastMesgId = -1;
+    } else {
+      try {
+        mesgInfo = (WindowMessageInfo)idempotentStorageManager.load(operatorId, windowId);
+        handleRecovery();
+      } catch (IOException e) {
+        DTThrowable.rethrow(e);
+      }
+    }
+  }
+
+  @Override
+  public void emitTuples()
+  {
+    if (windowId > lastCompletedWId) {
+      if (pendingMessage != null) {
+        super.emitTuples();
+      } else {
+        processMessage(pendingMessage);
+        pendingMessage = null;
+      }
+    }
+  }
+
+  @Override
+  public T processMessage(BytesXMLMessage message)
+  {
+    T tuple = super.processMessage(message);
+    recentMessage = message;
+    recentMesgId = recentMessage.getMessageIdLong();
+    if (mesgInfo.firstMesgId == -1) {
+      mesgInfo.firstMesgId = recentMesgId;
+    }
+    //message.ackMessage();
+    return tuple;
+  }
+
+  protected void handleRecovery() {
+    boolean done = false;
+    while (!done) {
+      try {
+        BytesXMLMessage message = consumer.receive((int)windowTime);
+        if (message != null) {
+          if ((message.getMessageIdLong() >= mesgInfo.firstMesgId) && (message.getMessageIdLong() <= mesgInfo.lastMesgId)) {
+            processMessage(message);
+          } else if (message.getMessageIdLong() > mesgInfo.lastMesgId) {
+            pendingMessage = message;
+            done = true;
+          }
+        } else {
+          done = true;
+        }
+      } catch (JCSMPException e) {
+        DTThrowable.rethrow(e);
+      }
+    }
+  }
+
+  @Override
+  public void endWindow()
+  {
+    super.endWindow();
+    mesgInfo.lastMesgId = recentMesgId;
+    // Store last message to acknowledge on committed
+    if (recentMessage != null) {
+      lastMessages.put(windowId, recentMessage);
+      //recentMessage.ackMessage();
+    }
+    try {
+      idempotentStorageManager.save(mesgInfo, operatorId, windowId);
+    } catch (IOException e) {
+      DTThrowable.rethrow(e);
+    }
+  }
+
+  @Override
+  public void committed(long window)
+  {
+    BytesXMLMessage message = lastMessages.get(windowId);
+    // Acknowledge the message
+    if (message != null) {
+      message.ackMessage();
+    }
+    Set<Long> windows = lastMessages.keySet();
+    Iterator<Long> iterator = windows.iterator();
+    while (iterator.hasNext()) {
+      if (iterator.next() <= window) {
+        iterator.remove();
+      } else {
+        break;
+      }
+    }
+    super.committed(window);
+  }
+
+  private static class WindowMessageInfo {
+    long firstMesgId = -1;
+    long lastMesgId = -1;
   }
 
   protected abstract void processGuaranteedMessage(BytesXMLMessage message);
@@ -105,13 +222,4 @@ public abstract class AbstractSolaceGuaranteedInputOperator extends AbstractSola
     this.endpointProvisionFlags = endpointProvisionFlags;
   }
 
-  public IdempotentStorageManager getIdempotentStorageManager()
-  {
-    return idempotentStorageManager;
-  }
-
-  public void setIdempotentStorageManager(IdempotentStorageManager idempotentStorageManager)
-  {
-    this.idempotentStorageManager = idempotentStorageManager;
-  }
 }

@@ -92,7 +92,7 @@ public class SolacePublisher implements Runnable
     for (int i = publishCount; i-- > 0;) {
       TextMessage message = factory.createMessage(TextMessage.class);
       message.setText("Hello World " + random.nextInt(1000));
-      message.setDeliveryMode(DeliveryMode.PERSISTENT);
+      message.setDeliveryMode(DeliveryMode.DIRECT);
       try {
         messageProducer.send(message, destination);
       } catch (JCSMPException e) {
