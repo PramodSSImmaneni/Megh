@@ -299,11 +299,13 @@
       <groupId>com.solace</groupId>
       <artifactId>sol-common</artifactId>
       <version>7.1.0</version>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>com.solace</groupId>
       <artifactId>sol-jcsmp</artifactId>
       <version>7.1.0</version>
+      <optional>true</optional>
     </dependency>
   </dependencies>
 
